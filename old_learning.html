@@ -1,0 +1,126 @@
+<html>
+<head>
+    <meta charset="utf8" />
+    <title>Canvas experiment en français</title>
+    <script src="kd tree.js"></script>
+    <script src="letter features.js"></script>
+    <style>
+        body {background-color:black;}
+        canvas {
+            background-color:white;
+            width:255px;
+            height:255px;
+        image-rendering: -moz-crisp-edges;         /* Firefox */
+        image-rendering:   -o-crisp-edges;         /* Opera */
+        image-rendering: -webkit-optimize-contrast;/* Webkit (non-standard naming) */
+        image-rendering: crisp-edges;
+        -ms-interpolation-mode: nearest-neighbor;  /* IE (non-standard property) */
+        }
+        div {color:white;}
+    </style>
+</head>
+<body>
+<canvas id="canvas" width="256" height="256"></canvas>
+<div id="results"></div>
+<script>
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext("2d");
+var div = document.getElementById("results");
+
+function clear(ctx) {
+    ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+}
+
+var fonts = ["Arial", "Courier", "Comic Sans MS", "serif", "cursive", "monospace", "Times", "Garamond"];
+ctx.setFont = function (name, size){
+    if (!size) size = canvas.height;
+    this.font = size+"px "+name;  
+}
+
+ctx.textBaseline = "bottom";
+
+
+function findBorders(img) {
+    var data=img.data;
+    function greyLevel(x,y){
+        var i = 4*(y*img.width+x);
+        return (data[i+3]/255) * (255-(data[i]+data[i+1]+data[i+2])/3);
+    }
+    var ret = {x:0,y:0,width:0,height:0};
+    for(var x=0;x<img.width; x++){
+        for(var y=0;y<img.height;y ++) {
+            if (greyLevel(x,y)>10) ret.x = x;
+        }
+        if(ret.x) break;
+    }
+    for(var y=0;y<img.height; y++){
+        for(var x=0;x<img.width;x ++) {
+            if (greyLevel(x,y)>10) ret.y = y;
+        }
+        if(ret.y) break;
+    }
+    for(var x=img.width-1;x>=0; x--){
+        for(var y=0;y<img.height;y ++) {
+            if (greyLevel(x,y)>10) ret.width = x-ret.x;
+        }
+        if(ret.width) break;
+    }
+    for(var y=img.height-1;y>=0; y--){
+        for(var x=0;x<img.width;x ++) {
+            if (greyLevel(x,y)>10) ret.height = y-ret.y;
+        }
+        if(ret.height) break;
+    }
+    return ret;
+}
+
+function analyzeLetter (letter, imageData) {
+    var t = Date.now();
+    var data = imageData.data,
+        sum=0;
+    for(var i=0;i<data.length; i+=4){
+        sum += data[i+3];
+
+        //console.log(data[i],data[i+1],data[i+2],data[i+3])
+    }
+    var avg = 4*sum/data.length; 
+    var el = document.createElement("p");
+    el.innerHTML = letter+" : "+Math.round(avg)+" \t temps de calcul : "+(Date.now()-t);
+    results.appendChild(el);
+}
+
+function test (font, str){
+    ctx.setFont(font);
+    var width = ctx.measureText(str).width;
+    if (width>0){
+        clear(ctx);
+        ctx.fillText(str, 0, canvas.height);
+        var imageData = ctx.getImageData(0,0,width,canvas.height);
+        //analyzeLetter(str, imageData);
+        //ctx.putImageData(color(imageData),0,0);
+        var borders = findBorders(imageData);
+        var b=borders; ctx.strokeRect(b.x,b.y,b.width,b.height);
+        console.log(calculate_coords(imageData, borders));
+    }    
+}
+
+var i="A".charCodeAt(0);
+var nFont = 0;
+canvas.onclick = function(){
+    nFont++;
+    if (nFont==fonts.length){
+        nFont=0;
+        i++;
+    }
+    var str = String.fromCharCode(i);
+    test(fonts[nFont], str);
+}
+window.onkeypress = function(evt){
+    var charCode = evt.which || evt.keyCode;
+    i = charCode;
+    nFont = 0;
+    test(fonts[0], String.fromCharCode(i));
+};
+</script>
+</body>
+</html>

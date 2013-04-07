@@ -1,0 +1,227 @@
+<html>
+<head>
+    <meta charset="utf8" />
+    <title>Analyse des fonctions caractéristiques</title>
+    <script src="utilities.js"></script>
+    <script src="learned_data.js"></script>
+    <style>
+        html {background-color:black;color:white}
+        canvas {background-color:white;}
+    </style>
+</head>
+
+<body>
+
+<canvas id="letter_canvas" width="64" height="64"></canvas>
+
+<ol id="graphs">
+
+</div>
+
+<script type="text/javascript">
+function create_plot_ctx (func) {
+    var li = document.createElement("li");
+    var canvas = document.createElement("canvas");
+    canvas.width = 1500; canvas.height=400;
+    li.innerHTML = func.name;
+    li.appendChild(canvas);
+    document.getElementById("graphs").appendChild(li);
+    return canvas.getContext("2d");
+}
+
+if (!window.performance) {
+	//Polyfill for web performance api
+	window.performance = {
+		"now" : function(){return Date.now();}
+	}
+}
+
+function test_funcs (funcs) {
+    var canvas = document.getElementById("letter_canvas"),
+		ctx = canvas.getContext("2d");
+		letterHeight = canvas.height;
+    ctx.textBaseline = "bottom";
+    var letters = "abcdefghijklmnopqrstuvwxyz";
+    var fonts = ["Arial", "Courier", "Comic Sans MS", "serif", "Verdana", "monospace", "Times", "Ubuntu", "Georgia"];
+
+	var plotFuncs = [];
+    for (var i=0;i<funcs.length;i++){
+        plotFuncs[i] = getPlotFunc(create_plot_ctx(funcs[i]));
+    }
+
+	var calcBeginningTime = performance.now();
+    var area;
+    var fo=0, i=0, fu=0;
+    setTimeout(function test_func_on_letter() {
+        var letter = letters[i], font = fonts[fo], func = funcs[fu];
+
+        if (fu === 0) {
+            ctx.clearRect(0,0,ctx.canvas.width, ctx.canvas.height);
+            ctx.font = letterHeight+"px "+font;
+            ctx.fillText(letter, 0, letterHeight);
+
+            var w = ctx.measureText(letter).width,
+                data = ctx.getImageData(0,0,w,letterHeight);
+            area = new AlphaLevelArea(data);
+        }
+
+        var ret = func(area);
+        plotFuncs[fu](letter, font, ret);
+
+        if (++fu >= funcs.length){
+            fu=0;
+            if (++fo >= fonts.length){
+                fo=0; i++;   
+            }
+        }
+        if (i<letters.length) setTimeout(test_func_on_letter, 0);
+        else console.log("Computation time: %f", performance.now()-calcBeginningTime);
+    }, 0);
+}
+
+function getPlotFunc(ctx) {
+    var xi = "a".charCodeAt(0),
+        xf = "z".charCodeAt(0)+1,
+        width = ctx.canvas.width,
+        height = ctx.canvas.height,
+        spacing = width/40,
+        amplitude = width/(xf-xi);
+
+	return function (letter, font, value) {
+		//The plotting function
+		var x = (letter.charCodeAt(0)-xi)*amplitude;
+		if(x<0||x>width) return;
+		//ctx.fillRect(x*spacing, height*canvas.height, spacing-2, 5);
+		ctx.font = "30px "+font;
+		ctx.fillText(letter, x, 10+value*(height-20));
+	}
+}
+
+function randomLog() {
+	if(Math.random()>0.9) {
+		console.log.apply({}, arguments);
+	}
+}
+
+function vertical (area) {
+    area.auto_crop();
+    for (var x=0; x<area.width; x++) {
+        var sumy=0;
+        for (var y=0; y<area.height; y++){
+            sumy += area.getPixel(x,y);
+        }
+        if (sumy > 255*area.height*0.95) {
+            return 0.9*x/area.width;
+        }
+    }
+    return 1;
+}
+
+function horizontal (area) {
+    area.auto_crop();
+    for (var y=0; y<area.height; y++) {
+        var sumx=0;
+        for (var x=0; x<area.width; x++){
+            sumx += area.getPixel(x,y);
+        }
+        if (sumx > 255*area.width*0.6) {
+            return 0.9*y/area.height;
+        }
+    }
+    return 1;
+}
+
+function heterogene (area) {
+    area.auto_crop();
+    var sum=0, add, prevx,prevy,nextx,nexty;
+    for (var y=0; y<area.height; y++) {
+        for (var x=0; x<area.width; x++){
+            prevx = (x===0) ? 0 : area.getPixel(x-1,y);
+            prevy = (y===0) ? 0 : area.getPixel(x,y-1);
+            nexty = (y===area.height-1) ? 0 : area.getPixel(x,y+1);
+            nextx = (x===area.width-1) ? 0 : area.getPixel(x+1,y);
+            add = 4*area.getPixel(x,y)-(prevx+prevy+nextx+nexty);
+            sum += Math.abs(add);
+        }
+    }
+    return 10*sum/(4*255*area.width*area.height);
+}
+
+function gradient (area) {
+    area.auto_crop();
+    var gradx=0, grady=0, prevx,prevy,nextx,nexty;
+    for (var y=0; y<area.height; y++) {
+        for (var x=0; x<area.width; x++){
+            prevx = (x===0) ? 0 : area.getPixel(x-1,y);
+            prevy = (y===0) ? 0 : area.getPixel(x,y-1);
+            nexty = (y===area.height-1) ? 0 : area.getPixel(x,y+1);
+            nextx = (x===area.width-1) ? 0 : area.getPixel(x+1,y);
+            gradx += (nextx-prevx)*(nextx-prevx);
+            grady += (nexty-prevy)*(nexty-prevy);
+        }
+    }
+    return Math.sqrt(grady/gradx);
+}
+
+function n_intersect (area) {
+    area.auto_crop();
+    var grady=0, prevy=0,cury=0, n_samples=0,
+    	x0=Math.floor(area.width/2),
+    	x = x0,
+    	y=Math.floor(area.height/2);
+
+    while(area.getPixel(x,y)<100 && x != x0-1) x = (++x)%area.width;
+    for (var y=0; y<area.height; y++){
+        prevy = cury;
+        cury = area.getPixel(x,y);
+        grady += (Math.abs(cury-prevy)>50)?1:0;
+    }
+    return (grady/6);
+}
+
+function momentFunc(point){
+	return function moment (area) {
+		area.auto_crop();
+		var middlex = point.x || Math.floor(area.width/2),
+			middley = point.y || Math.floor(area.height/2),
+			momentx = 0, momenty = 0,
+			pix, sumPix=0;
+
+		for (var y=0; y<area.height; y++) {
+			for (var x=0; x<area.width; x++){
+				pix = area.getPixel(x,y);
+				sumPix += pix;
+				momentx += pix*(x-middlex);
+				momenty += pix*(x-middlex);
+			}
+		}
+		momentx /= sumPix*middlex;
+		momenty /= sumPix*middley;
+		return 2*Math.sqrt(momentx*momentx+momenty*momenty);
+	}
+}
+
+/* Présent pour des raisons historiques
+function heterogene_ulysse (area) {
+    area.auto_crop();
+    var sum=0, add, prevx,prevy,nextx,nexty,here;
+    for (var y=0; y<area.height; y++) {
+        for (var x=0; x<area.width; x++){
+            here=area.getPixel(x,y)
+            prevx = here - (x===0) ? 0 : area.getPixel(x-1,y);
+            prevy = here - (y===0) ? 0 : area.getPixel(x,y-1);
+            nexty = here - (y===area.height-1) ? 0 : area.getPixel(x,y+1);
+            nextx = here - (x===area.width-1) ? 0 : area.getPixel(x+1,y);
+            add = Math.abs(prevx)+Math.abs(prevy)+Math.abs(nextx)+Math.abs(nexty);
+            sum += add;
+        }
+    }
+
+    return sum/(20*area.width*area.height);
+}
+*/
+
+test_funcs([vertical, n_intersect, gradient, momentFunc(1,1)]);
+</script>
+
+</body>

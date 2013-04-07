@@ -1,0 +1,103 @@
+<html>
+<head>
+    <meta charset="utf8" />
+    <title>ROC</title>
+    <script src="KDTree/KDTree.js"></script>
+    <script src="letter features.js"></script>
+    <script src="utilities.js"></script>
+    <script src="learned_data.js"></script>
+    <style>
+        body {background-color:#100;}
+        canvas {
+            background-color:white;
+            min-width:512px;
+        image-rendering: -moz-crisp-edges;         /* Firefox */
+        image-rendering:   -o-crisp-edges;         /* Opera */
+        image-rendering: -webkit-optimize-contrast;/* Webkit (non-standard naming) */
+        image-rendering: crisp-edges;
+        -ms-interpolation-mode: nearest-neighbor;  /* IE (non-standard property) */
+        }
+        div {color:white;font-size:2em;}
+        #results span{font-size:2em;letter-spacing:5px;}
+    </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="results"></div>
+
+<script>
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext("2d");
+var div = document.getElementById("results");
+
+function loadImage(src) {
+    var img = new Image();
+    img.onload = function(){
+        width = canvas.width = 4*img.width;
+        height = canvas.height = 4*img.height;
+        ctx.drawImage(this,0,0,width,height);
+        imageData = ctx.getImageData(0,0,width,height);
+        find_letters(new AlphaLevelArea(imageData, 0,0,width,height,true));
+    }
+    img.src=src;
+}
+loadImage("test-image.png");
+
+function find_letters(area) {
+    area.auto_crop();
+    var prevx = 0, sumSincePrev=0;
+    for (var x=0; x<area.width;x++){
+        var sum = 0;
+        for(var y=0;y<area.height;y++){
+            sum += area.getPixel(x,y);
+        }
+        sumSincePrev += sum;
+        if (sum/height < 10) {
+            if(sumSincePrev/height/(x-prevx+1) > 10){
+                analyze_letter(area.subArea(prevx,0,x-prevx,area.height));
+            }
+            prevx = x;
+            sumSincePrev=0;
+        }
+    }
+    return (prevx==0);
+}
+
+function HTMLletterInFont(point){
+    var d = document.createElement("span");
+    d.style.fontFamily = point.value.font;
+    d.title = JSON.stringify(point);
+    d.innerHTML = point.value.letter;
+    return d;
+}
+
+function best_match (neighbors) {
+    var obj = {};
+    for (var i=0;i<neighbors.length;i++){
+        var neighbor = neighbors[i];
+        if (typeof(obj[neighbor.value.letter])==='undefined') obj[neighbor.value.letter] = 0;
+        obj[neighbor.value.letter] += neighbor.value.freq/neighbor.distance;
+    }
+    return Object.keys(obj).sort(function(a,b){return obj[b]-obj[a]})[0];
+}
+
+function analyze_letter(area) {
+    var coords = calculate_coords(area);
+    area.surround(ctx);
+
+    var point = KDTree.create_point(coords);
+    var nearest_neighbors = KDTree.nearest_neighbors(learned_tree,point,5);
+    div.innerHTML += best_match(nearest_neighbors);
+    
+    var txt="";
+    nearest_neighbors.forEach(function(i){
+        txt+=i.value.letter+"("+Math.round(i.distance)+")";
+    });
+    console.log(txt);
+}
+
+
+</script>
+
+</body>
+</html>

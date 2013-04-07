@@ -1,0 +1,139 @@
+<html>
+<head>
+    <meta charset="utf8" />
+    <title>Canvas experiment en français</title>
+    <script src="KDTree/KDTree.js"></script>
+    <script src="letter features.js"></script>
+    <script src="utilities.js"></script>
+    <style>
+        body {background-color:black;color:#fee}
+        canvas {
+            background-color:white;
+            width:255px;
+            height:255px;
+        image-rendering: -moz-crisp-edges;         /* Firefox */
+        image-rendering:   -o-crisp-edges;         /* Opera */
+        image-rendering: -webkit-optimize-contrast;/* Webkit (non-standard naming) */
+        image-rendering: crisp-edges;
+        -ms-interpolation-mode: nearest-neighbor;  /* IE (non-standard property) */
+        }
+        progress {width:255px;}
+        div {color:white;}
+        #results span{font-size:2em;letter-spacing:5px;}
+    </style>
+</head>
+<body>
+<canvas id="canvas" width="256" height="256"></canvas> <span id="perf"></span>
+<br><progress id="progressBar" value="0" max="1"></progress>
+<br><textarea id="json_tree" style="display:none;" cols="100" rows="10"></textarea>
+<div id="results"></div>
+<script>
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext("2d");
+
+var div = document.getElementById("results");
+var progress = document.getElementById("progressBar");
+var textarea = document.getElementById("json_tree");
+
+var fonts = ["Arial", "Courier", "Comic Sans MS", "serif", "Verdana", "monospace", "Times", "Ubuntu", "Georgia"];
+ctx.setFont = function (name, size){
+    if (!size) size = canvas.height;
+    this.font = size+"px "+name;  
+}
+
+ctx.textBaseline = "bottom";
+
+var debug=false;
+
+function letter_coords (font, str){
+    ctx.setFont(font);
+    var width = ctx.measureText(str).width;
+    if (width>0){
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.fillText(str, 0, canvas.height);
+        imageData = ctx.getImageData(0,0,width,canvas.height);
+        return calculate_coords(new AlphaLevelArea(imageData));
+    }else throw new Error("The letter n°"+str.charCodeAt(0)+" is not printable.");
+}
+
+var freq_lettres=[["a",0.5183073907],["à",0.0329679084],["b",0.0611736381],["c",0.2213041111],["ç",0.0057801166],["d",0.2490362784],["e",1],
+["é",0.1292604018],["è",0.0184113974],["ê",0.0152469384],["ë",0.0000309807167167522],["f",0.0723665284],["g",0.058810252],["h",0.0500028768],
+["i",0.5110269222],["î",0.0030759426],["ï",0.0003717686],["j",0.036959995],["k",0.0032972334],["l",0.3702992295],["m",0.2014676008],
+["n",0.4815819639],["o",0.3662894396],["œ",0.0004779882],["p",0.2050702156],["q",0.0924508845],["r",0.4447945757],["s",0.5394849235],
+["t",0.4917215099],["u",0.4283526668],["ù",0.0039389768],["v",0.1105347714],["w",0.0077319017],["x",0.0262362412],["y",0.0209119838],
+["z",0.0092632343],["~",0.0000221290833691087],["<",0.0002080134],["=",0.0003584912],[">",0.0002832523],["|",0.0000531098000858608],
+[",",0.0085064196],[";",0.0041691193],["!",0.0038814412],["?",0.0048374176],["/",0.0050498568],[".",0.0616117939],["'",0.0971820825],
+["\"",0.0147202663],["(",0.0066652799],[")",0.0071521197],["[",0.0002389941],["]",0.0002478457],["@",0.0003186588],["$",0.0000442581667382174],
+["*",0.0006550209],["&",0.0000885163334764347],["#",0.000048684],["%",0.0002124392],["0",0.0981336331],["0",0.0304805994],["0",0.005191483],
+["0",0.0003009555],["1",0.0034609886],["2",0.0032087171],["3",0.0021597985],["4",0.0010400669],["5",0.0012436545],["6",0.0008763117],
+["7",0.0008807375],["8",0.0008099245],["9",0.0012569319]];
+var letters_points = [];
+var i=0;
+var nFont = 0;
+var tree;
+
+function changeLetter(){
+    var el = freq_lettres[i], char=el[0], freq=el[1],
+        font = fonts[nFont];
+
+    letters_points.push(
+        KDTree.create_point( letter_coords(font, char), {"letter":char,"font":font,"freq":freq})
+    );
+
+    if(++nFont >= fonts.length){
+        nFont = 0;
+        ++i;
+    }
+    progress.value = i/freq_lettres.length;
+    if (debug) return;
+    if (i<freq_lettres.length) setTimeout(changeLetter,1); //requestAnimationFrame(changeLetter)
+    else{
+        tree = KDTree.create(letters_points);
+        afficher_resultats();
+    }
+}
+var requestAnimationFrame = window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame || window.msRequestAnimationFrame;
+if (!debug) requestAnimationFrame(changeLetter);
+
+function HTMLletterInFont(point){
+    var d = document.createElement("span");
+    d.style.fontFamily = point.value.font;
+    d.title = JSON.stringify(point);
+    d.innerHTML = point.value.letter;
+    return d;
+}
+
+function afficher_resultats() {
+    textarea.style.display = "block";
+    textarea.innerHTML = "var learned_tree = "+JSON.stringify(tree).replace("{\"axis\"","{\"axis\"\n")+";";
+
+    justes=0;
+    total=0;
+    for (var i=0;i<letters_points.length;i++){
+        var letter = letters_points[i],
+             neighbors = KDTree.nearest_neighbors(tree, letter, 7),
+             p = document.createElement("p");
+        p.innerHTML = "Lettre ";
+        p.appendChild(HTMLletterInFont(letter));
+        p.innerHTML+="  :  "
+        for (var j=0;j<5;j++){
+            p.appendChild(HTMLletterInFont(neighbors[j]));;
+            if (neighbors[j].value.letter==letter.value.letter)justes++;
+            total++;
+        }
+        if (letter.value.letter!==neighbors[1].value.letter)p.style.backgroundColor="red";
+        div.appendChild(p);
+    }
+    document.getElementById("perf").innerHTML="Pertinence de l'algorithme :<h2>"+Math.round(1000*justes/total)/10+"%</h2>>";
+}
+
+if (debug) canvas.onclick = changeLetter;
+/*window.onkeypress = function(evt){
+    var charCode = evt.which || evt.keyCode;
+    i = charCode;
+    nFont = 0;
+    test(fonts[0], String.fromCharCode(i));
+};*/
+</script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+function calculate_coords (area) {
+"use strict";
+    var old_height = area.height;
+    var border = area.auto_crop(); //We only work on the contours of the image
+
+    var width = area.width, height = area.height;
+    function sumLine(x0,y0,x1,y1){
+        var d;
+        if (x0===x1) d=Math.abs(y1-y0);
+        else if(y0===y1) d=Math.abs(x1-x0);
+        else d = Math.sqrt((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0));
+        var dx = (1+x1-x0)/d, dy = (1+y1-y0)/d;
+
+        for(var sum=0,x=x0;x<=x1;x+=dx){
+            for(var y=y0;y<=y1;y+=dy){
+                sum += area.getPixel(Math.floor(x),Math.floor(y));
+            }
+        }
+        return sum/d;
+    }
+
+    var global_features = [ //features that depend of the whole image
+	    Math.floor(255*(border.y+border.height)/old_height), //Indicates the distance between the letter and the bottom of the line
+	    Math.floor(255*border.y/old_height), //distance between the letter and the top of the line
+            Math.round(255*width/height),
+            Math.floor(sumLine(0,0,width-1,height-1)/255),
+            Math.floor(sumLine(0,height,width-1,0)/255),
+    ];
+
+    var local_features = [ //features that can be calculated at several points of the image
+        [width*3/4,0,width,height, area.getPixel],//Bottom band
+        [width/4,height/4,width*3/4,height*3/4, area.getPixel],//The middle
+        [0,0,width/2,height/2, area.getPixel],
+        [width/2,0,width,height/2, area.getPixel],
+        [0,height/2,width/2,height, area.getPixel],
+        [width/2,height/2,width,height, area.getPixel],
+        [0,0,width/2,height,
+        function (x,y) {
+            //X-symmetry
+            var diff = area.getPixel(x,y) - area.getPixel(width-1-x,y);
+            return (diff>0)?diff:-diff;
+        }],
+        [0,0,width,height/2,
+        function (x,y) {
+            //Y-symmetry
+            return Math.abs(area.getPixel(x,y) - area.getPixel(x,height-1-y));
+        }],
+    ];
+
+    var coords = global_features;
+
+    for(var i=0; i<local_features.length;i++) {
+        var feature = local_features[i],
+            xmin = Math.ceil(feature[0]), ymin = Math.ceil(feature[1]),
+            xmax = feature[2], ymax = feature[3],
+            func = feature[4],
+            count=0, sum=0;
+        for(var x=xmin;x<xmax;x++) {
+            for (var y=ymin;y<ymax;y++) {
+                count++;
+                sum += func(x,y);
+            }
+        }
+        coords.push(Math.round(sum/count));
+    }
+    return coords;
+}

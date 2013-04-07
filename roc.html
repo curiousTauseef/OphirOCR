@@ -1,0 +1,138 @@
+<html>
+<head>
+    <meta charset="utf8" />
+    <title>ROC</title>
+<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+    <script src="KDTree/KDTree.js"></script>
+    <script src="letter features.js"></script>
+    <script src="utilities.js"></script>
+    <script src="learned_data.js"></script>
+    <style>
+body {
+	background-color:#100;
+	color:white;
+}
+canvas {
+    background-color:white;
+    min-width:512px;
+	image-rendering: -moz-crisp-edges;         /* Firefox */
+	image-rendering:   -o-crisp-edges;         /* Opera */
+	image-rendering: -webkit-optimize-contrast;/* Webkit (non-standard naming) */
+	image-rendering: crisp-edges;
+	-ms-interpolation-mode: nearest-neighbor;  /* IE (non-standard property) */
+}
+div {color:white;font-size:2em;}
+#results span{font-size:2em;letter-spacing:5px;}
+#canvasFile {
+	display:block;
+	width:0;
+	height:0;
+}
+    </style>
+</head>
+<body>
+
+<input type="file" id="canvasFile"></input>
+<canvas id="canvas" width="100" height="50"></canvas>
+<div id="results"></div>
+<p id="instructions">Cliquez ici pour choisir un fichier</p>
+
+<script>
+var canvas = document.getElementById("canvas");
+var ctx = canvas.getContext("2d");
+var div = document.getElementById("results");
+
+$("#instructions").click(function(){
+	$("#canvasFile").click();
+});
+$("#canvasFile").change(function(){
+	manageFiles(this.files);
+});
+
+function manageFiles (files) {
+		console.log(files.length);
+		if (files.length > 0) {
+			var file = files[0];
+			if (file.type.indexOf("image") != -1) {
+				var reader = new FileReader();
+				reader.onload = function (evt) {
+					loadImage(evt.target.result);
+				};
+				reader.readAsDataURL(file);
+			}else{
+				alert(("You must provide an image file"))
+			}
+		}
+}
+
+function loadImage(src) {
+	document.getElementById("results").innerHTML = "";
+    var img = new Image();
+    img.onload = function(){
+        width = canvas.width = 4*img.width;
+        height = canvas.height = 4*img.height;
+        ctx.drawImage(this,0,0,width,height);
+        imageData = ctx.getImageData(0,0,width,height);
+        find_letters(new AlphaLevelArea(imageData, 0,0,width,height,true));
+    }
+    img.src=src;
+}
+
+function find_letters(area) {
+    area.auto_crop();
+    var prevx = 0, sumSincePrev=0;
+    for (var x=0; x<area.width;x++){
+        var sum = 0;
+        for(var y=0;y<area.height;y++){
+            sum += area.getPixel(x,y);
+        }
+        sumSincePrev += sum;
+        if (sum/height < 5) {
+            if(sumSincePrev/height/(x-prevx+1) > 5){
+                analyze_letter(area.subArea(prevx,0,x-prevx,area.height));
+            }
+            prevx = x;
+            sumSincePrev=0;
+        }
+    }
+    return (prevx==0);
+}
+
+function HTMLletterInFont(point){
+    var d = document.createElement("span");
+    d.style.fontFamily = point.value.font;
+    d.title = JSON.stringify(point);
+    d.innerHTML = point.value.letter;
+    return d;
+}
+
+function best_match (neighbors) {
+    var obj = {};
+    for (var i=0;i<neighbors.length;i++){
+        var neighbor = neighbors[i];
+        if (typeof(obj[neighbor.value.letter])==='undefined') obj[neighbor.value.letter] = 0;
+        obj[neighbor.value.letter] += neighbor.value.freq/neighbor.distance;
+    }
+    return Object.keys(obj).sort(function(a,b){return obj[b]-obj[a]})[0];
+}
+
+function analyze_letter(area) {
+    var coords = calculate_coords(area);
+    area.surround(ctx);
+
+    var point = KDTree.create_point(coords);
+    var nearest_neighbors = KDTree.nearest_neighbors(learned_tree,point,5);
+    div.innerHTML += best_match(nearest_neighbors);
+    
+    var txt="";
+    nearest_neighbors.forEach(function(i){
+        txt+=i.value.letter+"("+Math.round(i.distance)+")";
+    });
+    console.log(txt);
+}
+
+
+</script>
+
+</body>
+</html>

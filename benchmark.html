@@ -1,0 +1,63 @@
+<html>
+<head>
+    <meta charset="utf8" />
+    <title>Analyse des fonctions caractéristiques</title>
+    <script src="utilities.js"></script>
+    <script src="learned_data.js"></script>
+    <style>
+        html {background-color:black;color:white}
+        canvas {background-color:white;}
+    </style>
+</head>
+
+<body>
+<script type="text/javascript">
+
+function ecart_type (data) {
+    var sum=0, sumSquare=0, elem;
+    for (var i=0;i<data.length;i++) {
+        elem = data[i];
+        sum += elem;
+        sumSquare += elem*elem;
+    }
+    return Math.sqrt(sum*sum-sumSquare);
+}
+
+function plot(letter, height, freq, font) {
+    var xi = "a".charCodeAt(0),
+        xf = "z".charCodeAt(0)+1,
+        spacing = canvas.width/40,
+        x = (letter.charCodeAt(0)-xi)/(xf-xi)*canvas.width;
+    if(x<0||x>canvas.width) return;
+    ctx.fillStyle="#0000"+(10+Math.round(freq*90));
+    //ctx.fillRect(x*spacing, height*canvas.height, spacing-2, 5);
+    ctx.font = "30px "+font;
+    ctx.fillText(letter, x, 10+height*(canvas.height-20))
+}
+
+function plot_kdtree (node, i) {
+    if (!node) return;
+    var infos = node.point.value;
+    plot(infos.letter, node.point.coords[i]/255, infos.freq, infos.font);
+    plot_kdtree(node.leftChild,i);
+    plot_kdtree(node.rightChild,i);
+}
+
+function process_tree (tree) {
+    var features = ["Distance au bas de la ligne", "Distance au haut de la ligne",
+    "width/height", "first diagonal", "second diagonal", "right-hand side band", "square in the middle", "rect1", "rect2", "rect3", "rect4", "X-symmetry", "Y-symmetry"];
+    for (var i=0;i<features.length;i++) {
+        canvas = document.createElement("canvas");
+        canvas.width=1300; canvas.height=450;
+        ctx = canvas.getContext("2d");
+        var h = document.createElement("h1");
+        h.innerHTML = i+". "+features[i];
+        document.body.appendChild(h);
+        document.body.appendChild(canvas);
+        plot_kdtree(tree, i);
+    }
+}
+process_tree(learned_tree);
+</script>
+
+</body>
